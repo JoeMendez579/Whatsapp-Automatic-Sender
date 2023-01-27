@@ -1,0 +1,74 @@
+Sub send_msg()
+    On Error Resume Next
+    Dim tbl As ListObject
+    Dim IE As Object
+    Dim Edge As Object 'variable which is used to create a WhatsApp instance
+    Dim SendImage As Boolean
+    Dim filename As String
+    Set tbl = Nothing
+    Set tbl = ActiveSheet.ListObjects("whatsapp_table")
+    
+    On Error Resume Next
+    
+    If tbl.DataBodyRange Is Nothing Then
+        MsgBox ("There is none message to send")
+        Set tbl = Nothing
+        Exit Sub
+    End If
+
+    SendImage = ActiveSheet.OLEObjects("SendImage").Object.Value
+    
+    If SendImage = True Then
+        Dim FInfo As String
+        FInfo = "Image files (*.png; *.jpg), *.png;*.jpg"
+        filename = Application.GetOpenFilename(FInfo, 1, "Choose an image to send")
+        
+        If filename = "False" Then
+            MsgBox ("You have to chose, an image to send, if you dont want to send image unmark Send Image checkbox")
+            Exit Sub
+        End If
+    End If
+    
+    Dim i As Integer
+    For i = 1 To tbl.DataBodyRange.Rows.Count
+        If SendImage = True Then
+            Set Picture = ActiveSheet.Pictures.Insert(filename) 'Load image to VBA object
+            Picture.Copy 'copy and image from VBA object to clipboard
+        End If
+       'Set IE = CreateObject("InternetExplorer.Application") 'Create object IE
+        Set Edge = CreateObject("Shell.Application") 'we start the instace. We referred to https://learn.microsoft.com/es-es/windows/win32/shell/shell-shellexecute
+            With tbl
+                If .DataBodyRange(i, 1) <> "" Then ' And .DataBodyRange(i, 2) <> "" Then
+                    'IE.navigate "whatsapp://send?phone=52" & .DataBodyRange(i, 1).Value & "&text=" & .DataBodyRange(i, 2).Value & "&image=" & .DataBodyRange(i, 2).Value 'Request encoded URL"
+                   Application.Wait (Now + TimeValue("0:00:03"))
+                   Edge.ShellExecute "whatsapp://send?phone=52" & .DataBodyRange(i, 1).Value 'we found out that if only the original line was used you had should select the number then send the message
+                   Edge.ShellExecute "whatsapp://send?phone=52" & .DataBodyRange(i, 1).Value & "&text=" & .DataBodyRange(i, 2).Value & "&image=" & .DataBodyRange(i, 2).Value 'Request encoded URL" 'this line is exactly the same. Except we call a WhatsApp instance with the allowed paremeters
+                   
+                Edge.ShellExecute "whatsapp://send?phone=52" & .DataBodyRange(i, 1).Value
+                
+                
+                        SendKeys "{ENTER}" 'simulate smash enter button
+                        SendKeys "{ENTER}" 'twice just for sure
+                        Application.Wait (Now + TimeValue("0:00:02"))
+                        SendKeys "{ENTER}" 'a third enter to simulate the "send" button
+                        
+                   If SendImage = True Then
+                      SendKeys "^v" 'simulate CTRL+V to paste image from clipboard
+                        
+                
+                        
+                        SendKeys "{ENTER}" 'simulate smash enter button
+                        SendKeys "{ENTER}" 'twice just for sure
+                        Application.Wait (Now + TimeValue("0:00:02"))
+                        SendKeys "{ENTER}" 'a third enter to simulate the "send" button
+                        
+                   
+                   End If
+                    
+                End If
+            End With
+        Picture.Delete
+        Set Picture = Nothing
+        Set IE = Nothing
+    Next i
+End Sub
