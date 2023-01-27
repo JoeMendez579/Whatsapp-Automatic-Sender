@@ -1,0 +1,259 @@
+Function ConvertToLetter(iCol As Long) As String
+   Dim a As Long
+   Dim b As Long
+   a = iCol
+   ConvertToLetter = ""
+   Do While iCol > 0
+      a = Int((iCol - 1) / 26)
+      b = (iCol - 1) Mod 26
+      ConvertToLetter = Chr(b + 65) & ConvertToLetter
+      iCol = a
+   Loop
+End Function
+
+Sub Field_mapper()
+
+Dim FInfo As String
+Dim filename As Variant
+Dim mapped_array() As Variant
+Dim remapped_array() As Variant
+Dim lastRow As Long
+Dim lastCol As Long
+Dim i As Long
+Dim wbk As Workbook
+Dim sss As String
+Set wbk = Nothing
+
+'mapping names of mapped columns into array
+lastRow = ThisWorkbook.Sheets("mapped_fields").Range("A" & Rows.Count).End(xlUp).Row
+ReDim mapped_array(1 To lastRow)
+For i = 1 To lastRow
+    mapped_array(i) = ThisWorkbook.Sheets("mapped_fields").Range("A" & i).Value
+Next i
+'get filename selected by Application.GetOpenFilename window
+FInfo = "Excel files (*.xlsx; *.xls), *.xlsx;*.xls"
+filename = Application.GetOpenFilename(FInfo, 1, "Choose a file")
+
+If filename = "False" Then
+    ThisWorkbook.Sheets("mapped_fields").Visible = False
+    MsgBox ("You have to chose a file")
+    Exit Sub
+End If
+'open workbook from filename direction
+Set wbk = Workbooks.Open(filename)
+'copy columns names into ThisWorkbook and close prev open workbook
+With wbk
+    lastCol = .Sheets(1).Range("A1").End(xlToRight).Column
+    .Sheets(1).Range("A1:" & ConvertToLetter(lastCol) & "1").Copy
+    ThisWorkbook.Sheets("mapped_fields").Range("B1").PasteSpecial Transpose:=True
+End With
+wbk.Close SaveChanges:=True
+'mapping names of new columns into array
+lastRow = ThisWorkbook.Sheets("mapped_fields").Range("B" & Rows.Count).End(xlUp).Row
+ReDim remapped_array(1 To lastRow)
+For i = 1 To lastRow
+    remapped_array(i) = ThisWorkbook.Sheets("mapped_fields").Range("B" & i).Value
+Next i
+'hide sheet where mapped columns names are contained
+ThisWorkbook.Sheets("mapped_fields").Visible = False
+'show message when 2 arrays match
+If Join(mapped_array, ",") = Join(remapped_array, ",") Then
+    ThisWorkbook.Sheets("mapped_fields").Columns(2).ClearContents
+    ThisWorkbook.Sheets("mapped_fields").Visible = False
+    MsgBox ("There is no new fields to be mapped")
+Else
+    'clear range and write values from array with new columns names to range in sheetmapped_fields
+    ThisWorkbook.Sheets("mapped_fields").Columns("A:B").ClearContents
+
+    For i = 1 To lastRow
+        ThisWorkbook.Sheets("mapped_fields").Range("A" & i) = remapped_array(i)
+    Next i
+    ThisWorkbook.Sheets("mapped_fields").Visible = False
+    MsgBox ("New fields mapped")
+End If
+
+ThisWorkbook.Sheets("mapped_fields").Visible = False
+
+End Sub
+Function Contains(objCollection As Object, strName As String) As Boolean
+    Dim o As Object
+    On Error Resume Next
+    Set o = objCollection(strName)
+    Contains = (Err.Number = 0)
+    Err.Clear
+ End Function
+Sub Templates_assignee()
+
+Dim FInfo As String
+Dim filename As Variant
+Dim mapped_array() As Variant
+Dim remapped_array() As Variant
+Dim lastRow As Long
+Dim lastCol As Long
+Dim i As Long
+Dim wbk As Workbook
+Dim sss As String
+Set wbk = Nothing
+
+FInfo = "Excel files (*.xlsx; *.xls), *.xlsx;*.xls"
+filename = Application.GetOpenFilename(FInfo, 1, "Choose a file")
+
+If filename = "False" Then
+    MsgBox ("You have to chose a file")
+    Exit Sub
+End If
+
+Set wbk = Workbooks.Open(filename)
+
+Dim new_wbk As Workbook
+
+Set new_wbk = Workbooks.Add
+
+With wbk
+    lastCol = wbk.Sheets(1).Range("A1").End(xlToRight).Column
+    lastRow = wbk.Sheets(1).Range("A" & Rows.Count).End(xlUp).Row
+    wbk.Sheets(1).Range("A1:" & ConvertToLetter(lastCol) & lastRow).Copy Destination:=new_wbk.Sheets(1).Range("A1")
+End With
+
+wbk.Close SaveChanges:=True
+
+Dim DataTable As ListObject
+
+With new_wbk
+    lastCol = .Sheets(1).Range("A1").End(xlToRight).Column
+    lastRow = .Sheets(1).Range("A" & Rows.Count).End(xlUp).Row
+End With
+Set DataTable = new_wbk.Sheets(1).ListObjects.Add(xlSrcRange, Range("A1:" & ConvertToLetter(lastCol) & lastRow), , xlYes)
+dbr = DataTable.DataBodyRange
+
+Set TemplatesTable = ThisWorkbook.Sheets("template").ListObjects("Hidden_template")
+colCond = TemplatesTable.ListColumns("Conditions formula").Index
+colName = TemplatesTable.ListColumns("Template name").Index
+colMessage = TemplatesTable.ListColumns("Message").Index
+
+Dim template_name As ListColumn
+Set template_name = DataTable.ListColumns.Add
+template_name.Name = "template_name"
+Dim message_text As ListColumn
+Set message_text = DataTable.ListColumns.Add
+message_text.Name = "message_text"
+
+v = TemplatesTable.DataBodyRange
+
+Dim condFieldID As Long
+Dim IfCondBody As String
+Dim cond_sigh As String
+Dim cond_value As Variant
+Dim actual_value As Variant
+Dim label As String
+Dim tconflict_text As String
+Dim tconflict_text_result As Long
+Dim fvalue As Variant
+For i = 1 To TemplatesTable.ListRows.Count
+    msg_result = 0
+    conditions = Split(v(i, colCond), ";")
+    For j = 1 To DataTable.ListRows.Count
+        condBool = 0
+        For n = 1 To UBound(conditions, 1) + 1
+            FieldName = Split(conditions(n - 1), "|")
+
+            If Contains(DataTable.ListColumns, CStr(FieldName(0))) = False Then
+                new_wbk.Close SaveChanges:=False
+                MsgBox ("Connot find column " & FieldName(0) & " in input excel")
+                Exit Sub
+            End If
+            condFieldID = DataTable.ListColumns(FieldName(0)).Index
+            
+            cond_sigh = FieldName(1)
+            If TypeName(FieldName(2)) = "Date" Then
+                cond_value = CDate(FieldName(2))
+            ElseIf TypeName(FieldName(2)) = "Double" Or TypeName(FieldName(2)) = "Currency" Then
+                cond_value = CDbl(FieldName(2))
+            ElseIf IsNumeric(FieldName(2)) = True Then
+                cond_value = CInt(FieldName(2))
+            Else
+                cond_value = FieldName(2)
+            End If
+            If TypeName(dbr(j, condFieldID)) = "Date" Then
+                actual_value = CDate(dbr(j, condFieldID))
+            ElseIf TypeName(dbr(j, condFieldID)) = "Double" Or TypeName(dbr(j, condFieldID)) = "Currency" Then
+                actual_value = CDbl(dbr(j, condFieldID))
+            ElseIf IsNumeric(dbr(j, condFieldID)) = True Then
+                actual_value = CInt(dbr(j, condFieldID))
+            Else
+                actual_value = dbr(j, condFieldID)
+            End If
+            
+            If FieldName(1) = "=" Then
+                If actual_value = cond_value Then condBool = condBool + 1
+            ElseIf FieldName(1) = ">" Then
+                If actual_value > cond_value Then condBool = condBool + 1
+            ElseIf FieldName(1) = "<" Then
+                If actual_value < cond_value Then condBool = condBool + 1
+            ElseIf FieldName(1) = ">=" Then
+                If actual_value >= cond_value Then condBool = condBool + 1
+            ElseIf FieldName(1) = "<=" Then
+                If actual_value <= cond_value Then condBool = condBool + 1
+            End If
+
+        Next n
+        If condBool = UBound(conditions, 1) + 1 And template_name.Range(j + 1) <> "" Then
+            If Contains(new_wbk.Sheets, "templates_conficts") = False Then
+                Dim tconficts_sheet As Worksheet
+                Dim tconflict_last_row As Long
+                Set tconficts_sheet = new_wbk.Sheets.Add
+                tconficts_sheet.Name = "templates_conficts"
+                tconficts_sheet.Range("A1") = "Template_name1"
+                tconficts_sheet.Range("B1") = "Template_name2"
+                tconficts_sheet.Range("C1") = "Row_number"
+                tconflict_last_row = 1
+            End If
+            tconflict_last_row = tconflict_last_row + 1
+            tconficts_sheet.Range("A" & tconflict_last_row) = template_name.Range(j + 1)
+            tconficts_sheet.Range("B" & tconflict_last_row) = v(i, colName)
+            tconficts_sheet.Range("C" & tconflict_last_row) = j + 1
+        End If
+        If (condBool = UBound(conditions, 1) + 1 And template_name.Range(j + 1) = "") Or msg_result = 6 Then
+            template_name.Range(j + 1) = v(i, colName)
+            'Format message
+            message_split = Split(v(i, colMessage), "{")
+            For m = 1 To UBound(message_split, 1) + 1
+                If message_split(m - 1) = "" Then
+                    mpart_split = Split(message_split(m), "}}")
+                    label = Trim(mpart_split(0))
+                    If UBound(mpart_split, 1) > 0 Then
+                        next_part = mpart_split(1)
+                    Else
+                        next_part = ""
+                    End If
+                    If Contains(DataTable.ListColumns, label) = False Then
+                        new_wbk.Close SaveChanges:=False
+                        MsgBox ("Connot find column " & label & " in input excel")
+                        Exit Sub
+                    End If
+                    label_index = DataTable.ListColumns(label).Index
+                    If TypeName(dbr(j, label_index)) = "Double" Or TypeName(dbr(j, label_index)) = "Currency" Then
+                        fvalue = Round(dbr(j, label_index), 2)
+                    Else
+                        fvalue = dbr(j, label_index)
+                    End If
+                    message_split(m) = CStr(fvalue) & next_part
+                End If
+            Next m
+            message_text.Range(j + 1) = Join(message_split, "")
+        End If
+    Next j
+Next i
+If Contains(new_wbk.Sheets, "templates_conficts") = True Then
+    ok = MsgBox("There where conflicts in templates you can find them in Sheet templates_conficts", vbOKOnly, "Templates conflicts")
+End If
+'check for empty cells
+Dim empty_cells As Boolean
+empty_cells = False
+For j = 1 To DataTable.ListRows.Count
+    If message_text.Range(j + 1) = "" Then empty_cells = True
+Next j
+If empty_cells = True Then
+    ok = MsgBox("Warning! There are empty records without message assignee", vbOKOnly, "Empty messages")
+End If
+End Sub
